@@ -19,6 +19,11 @@ This application supports:
 
 - Local JSON-based storage
 - Automatic `data.json` creation when the file does not exist
+- Automatic `categories.json` creation when the file does not exist
+- Default categories created on first run
+- User-defined category creation
+- Category rename support
+- Empty-category deletion support
 - Category-based navigation
 - Per-category item ordering
 - Global interview mode with random question selection
@@ -36,13 +41,15 @@ Each entry contains the following fields:
 - `answer`: Formal answer
 - `category`: Entry category
 
-Available categories:
+Default categories created on first run:
 
 - `經歷`
 - `前職`
 - `人柄`
 - `專案`
 - `志望動機`
+
+Additional categories can be created from the application UI.
 
 
 ## Project Structure
@@ -52,6 +59,7 @@ interview-python-app/
 ├── app.py
 ├── requirements.txt
 ├── .gitignore
+├── categories.json
 └── data.json
 ```
 
@@ -120,6 +128,8 @@ http://localhost:8501
 - Questions are listed in the left sidebar by category
 - Selecting a question opens its content in the main panel
 - Items within the same category can be reordered using `↑` and `↓`
+- Each category includes `抽題`, `編輯`, and `刪除` controls
+- A category can be deleted only when it contains no cards
 
 ### Interview Mode
 
@@ -143,8 +153,16 @@ The following display controls are available:
 ### Creating an Entry
 
 - Expand `新增一筆面試準備資料`
-- Enter category, question, points, and answer
+- Select an existing category, or provide a new category name
+- If a new category name is provided, it takes precedence over the selected existing category
+- Enter question, points, and answer
 - Select `新增資料`
+
+### Category Management
+
+- Default categories are created automatically when `categories.json` is first generated
+- Category names can be edited from the sidebar using `編輯`
+- Categories can be removed using `刪除` only when no cards remain in that category
 
 ### Editing an Entry
 
@@ -160,12 +178,14 @@ The following display controls are available:
 
 ## Local Data Storage
 
-Application data is stored locally in `data.json`.
+Application data is stored locally in `data.json` and `categories.json`.
 
 Behavior:
 
 - The application checks for `data.json` each time it loads data
+- The application checks for `categories.json` each time it loads categories
 - If the file does not exist, an empty `data.json` file is created automatically
+- If the category file does not exist, a `categories.json` file is created automatically with the default categories
 - No manual creation step is required before first launch
 
 
@@ -175,18 +195,20 @@ The repository excludes the following local files and directories:
 
 ```text
 data.json
+categories.json
 .venv/
 __pycache__/
 .DS_Store
 ```
 
-As a result, local interview data is not included in Git commits by default.
+As a result, local interview data and local category configuration are not included in Git commits by default.
 
-If `data.json` was previously committed before `.gitignore` was added, stop tracking it with:
+If `data.json` or `categories.json` was previously committed before `.gitignore` was added, stop tracking it with:
 
 ```bash
 git rm --cached data.json
-git commit -m "Stop tracking local data file"
+git rm --cached categories.json
+git commit -m "Stop tracking local data files"
 ```
 
 
