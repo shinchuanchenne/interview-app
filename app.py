@@ -1,4 +1,5 @@
 import json
+import random
 from pathlib import Path
 from uuid import uuid4
 
@@ -114,6 +115,17 @@ def compact_category_orders(items: list[dict]) -> list[dict]:
     return sort_items(sorted_items)
 
 
+def pick_random_item(pool: list[dict], current_item_id: str | None) -> dict | None:
+    if not pool:
+        return None
+
+    candidates = [item for item in pool if item["id"] != current_item_id]
+    if not candidates:
+        return None
+
+    return random.choice(candidates)
+
+
 st.set_page_config(page_title="面試回答管理 App", page_icon="🗂️", layout="wide")
 st.title("面試回答管理 App")
 st.caption("左側像目錄一樣管理題目，右側查看與編輯內容。")
@@ -174,6 +186,12 @@ items = load_items()
 if "selected_item_id" not in st.session_state:
     st.session_state.selected_item_id = items[0]["id"] if items else None
 
+if "show_points" not in st.session_state:
+    st.session_state.show_points = True
+
+if "show_answer" not in st.session_state:
+    st.session_state.show_answer = True
+
 if st.session_state.selected_item_id and not get_item_by_id(items, st.session_state.selected_item_id):
     st.session_state.selected_item_id = items[0]["id"] if items else None
 
@@ -181,10 +199,36 @@ selected_item = get_item_by_id(items, st.session_state.selected_item_id)
 
 
 with st.sidebar:
+    interview_mode_clicked = st.button("面試模式", use_container_width=True)
+    if interview_mode_clicked:
+        if items:
+            random_item = pick_random_item(items, st.session_state.selected_item_id)
+            if random_item:
+                st.session_state.selected_item_id = random_item["id"]
+                st.rerun()
+            else:
+                st.warning("目前至少需要兩題，才能切換到不同題目。")
+        else:
+            st.warning("目前還沒有題目可以抽。")
+
     st.header("題目目錄")
     for category in CATEGORIES:
-        st.markdown(f"**{category}**")
         category_items = [item for item in items if item["category"] == category]
+        header_col, action_col = st.columns([4, 2])
+        with header_col:
+            st.markdown(f"**{category}**")
+        with action_col:
+            category_mode_clicked = st.button(
+                "抽題",
+                key=f"category_random_{category}",
+                use_container_width=True,
+                disabled=len(category_items) < 2,
+            )
+            if category_mode_clicked:
+                random_item = pick_random_item(category_items, st.session_state.selected_item_id)
+                if random_item:
+                    st.session_state.selected_item_id = random_item["id"]
+                    st.rerun()
 
         if category_items:
             for index, item in enumerate(category_items):
@@ -233,6 +277,12 @@ st.markdown('<div class="section-title">題目小卡</div>', unsafe_allow_html=T
 if not selected_item:
     st.info("請先在左側選擇題目，或在下方新增一筆資料。")
 else:
+    toggle_col1, toggle_col2 = st.columns(2)
+    with toggle_col1:
+        st.checkbox("顯示 Point", key="show_points")
+    with toggle_col2:
+        st.checkbox("顯示答案", key="show_answer")
+
     st.caption(f"分類：{selected_item['category']}")
     question_text = selected_item["question"] or "尚未填寫"
     points_text = selected_item["points"] or "尚未填寫"
@@ -248,24 +298,27 @@ else:
         """,
         unsafe_allow_html=True,
     )
-    st.markdown(
-        f"""
-        <div class="stack-card">
-            <div class="stack-card-label">回答 Point</div>
-            <div class="stack-card-points">{points_text}</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-    st.markdown(
-        f"""
-        <div class="stack-card">
-            <div class="stack-card-label">回答答案</div>
-            <div class="answer-box">{answer_html}</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    if st.session_state.show_points:
+        st.markdown(
+            f"""
+            <div class="stack-card">
+                <div class="stack-card-label">回答 Point</div>
+                <div class="stack-card-points">{points_text}</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    if st.session_state.show_answer:
+        st.markdown(
+            f"""
+            <div class="stack-card">
+                <div class="stack-card-label">回答答案</div>
+                <div class="answer-box">{answer_html}</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
     with st.expander("編輯這張小卡", expanded=False):
         with st.form("edit_form"):
