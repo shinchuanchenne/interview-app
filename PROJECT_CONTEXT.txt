@@ -133,6 +133,7 @@ Important:
 - passwords are not stored in plain text
 - this file is local-only
 - this file is excluded from Git
+- this file replaces the legacy role previously served by data.json / categories.json for runtime persistence entry points
 
 
 4.6 user_data/
@@ -150,6 +151,7 @@ Each user file contains:
 Important:
 - this directory is local-only
 - this directory is excluded from Git
+- this directory is the active runtime storage location for interview data
 
 
 4.7 .gitignore
@@ -162,6 +164,20 @@ Current important entries:
 - .venv/
 - __pycache__/
 - .DS_Store
+
+
+4.10 Legacy data.json and categories.json
+
+These files belonged to the previous single-user storage design.
+
+Current status:
+- deprecated
+- no longer used by the runtime
+- intentionally removed from the active project state
+
+Important:
+- future edits should not reintroduce these files as active storage
+- all current persistence logic should continue to target users.json and user_data/
 
 
 4.8 .venv
@@ -186,6 +202,10 @@ The current implementation uses:
 5.2 user_data/<hashed-username>.json
 - per-user interview data
 
+Legacy note:
+- the older single-user files data.json and categories.json have been retired
+- they should be treated as obsolete artifacts, not fallback storage
+
 This was chosen because:
 - it satisfies the requirement for login
 - it separates user data cleanly
@@ -207,6 +227,10 @@ Current behavior:
 - ensure_users_file() creates users.json if missing
 - ensure_user_data_dir() creates user_data/ if missing
 - ensure_user_data_file(username) creates that user's JSON file if missing
+
+Current non-behavior:
+- the app no longer creates or reads data.json
+- the app no longer creates or reads categories.json
 
 This means:
 - first launch does not require manual setup
@@ -594,6 +618,7 @@ This matters when modifying:
 Core logic has been manually validated with non-destructive logic tests.
 
 Covered logic includes:
+- legacy file removal checks
 - user creation
 - user-file creation
 - password hashing
@@ -607,7 +632,7 @@ Covered logic includes:
 - random selection non-repetition rule
 
 Latest recorded result:
-- 17 tests, 0 failed
+- expanded logic test suite executed after the multi-user migration
 
 These are logic-layer checks, not browser automation tests.
 
@@ -636,6 +661,10 @@ The following are local-only and should not be committed:
 
 Current .gitignore excludes them.
 
+Legacy note:
+- data.json and categories.json were previously excluded
+- those files are now deprecated because the runtime no longer uses them
+
 If they were previously committed, stop tracking them with:
 - git rm --cached users.json
 - git rm -r --cached user_data
@@ -651,21 +680,24 @@ Any AI assistant modifying this project should understand:
 2. Persistent interview data is per user.
    Changes must be saved with save_user_payload(...), not to a global data.json file.
 
-3. Login state gates the main UI.
+3. Legacy single-user files are obsolete.
+   Do not restore data.json or categories.json as runtime dependencies.
+
+4. Login state gates the main UI.
    Do not render the main app for unauthenticated sessions.
 
-4. Categories are per user.
+5. Categories are per user.
    They are stored inside each user's JSON payload.
 
-5. Password handling must remain hashed.
+6. Password handling must remain hashed.
    Do not introduce plain-text password storage.
 
-6. File auto-creation is required.
+7. File auto-creation is required.
    Missing users.json or user data files must not break the app.
 
-7. Random mode must continue to avoid immediate repetition unless intentionally redesigned.
+8. Random mode must continue to avoid immediate repetition unless intentionally redesigned.
 
-8. The sidebar is the primary interaction model.
+9. The sidebar is the primary interaction model.
    Redesigns should preserve that mental model unless explicitly intended.
 
 
