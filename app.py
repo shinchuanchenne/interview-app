@@ -253,6 +253,21 @@ def pick_random_item(pool: list[dict], current_item_id: str | None) -> dict | No
     return random.choice(candidates)
 
 
+def get_adjacent_item_id(items: list[dict], current_item_id: str | None, direction: int) -> str | None:
+    if not items:
+        return None
+
+    item_ids = [item["id"] for item in items]
+    if current_item_id not in item_ids:
+        return item_ids[0]
+
+    current_index = item_ids.index(current_item_id)
+    target_index = current_index + direction
+    if target_index < 0 or target_index >= len(item_ids):
+        return None
+    return item_ids[target_index]
+
+
 def add_category(categories: list[str], new_name: str) -> tuple[list[str], str | None]:
     cleaned = new_name.strip()
     if not cleaned:
@@ -313,6 +328,9 @@ st.set_page_config(page_title="面試回答管理 App", page_icon="🗂️", lay
 st.markdown(
     """
     <style>
+    .main-title {
+        margin-bottom: 0.2rem;
+    }
     .section-title {
         font-size: 1.6rem;
         font-weight: 700;
@@ -357,6 +375,44 @@ st.markdown(
         line-height: 1.85;
         margin: 0 0 0.8rem 0;
     }
+    @media (max-width: 768px) {
+        .block-container {
+            padding-left: 1rem;
+            padding-right: 1rem;
+            padding-top: 1rem;
+        }
+        h1 {
+            font-size: 2.05rem !important;
+            line-height: 1.2;
+        }
+        .section-title {
+            font-size: 1.2rem;
+            margin-top: 1rem;
+            margin-bottom: 0.75rem;
+        }
+        .stack-card {
+            padding: 14px 14px;
+            border-radius: 12px;
+            margin-top: 10px;
+        }
+        .stack-card-question {
+            font-size: 1.45rem;
+            line-height: 1.4;
+        }
+        .stack-card-points,
+        .answer-box p {
+            font-size: 0.98rem;
+            line-height: 1.7;
+        }
+        div[data-testid="stExpander"] details summary p,
+        div[data-testid="stCheckbox"] label p,
+        div[data-testid="stButton"] button p {
+            font-size: 0.95rem;
+        }
+        div[data-testid="stHorizontalBlock"] {
+            gap: 0.5rem;
+        }
+    }
     </style>
     """,
     unsafe_allow_html=True,
@@ -395,6 +451,50 @@ selected_item = get_item_by_id(items, st.session_state.selected_item_id)
 
 st.title("面試回答管理 App")
 st.caption(f"目前登入帳號：{current_user}")
+
+if "quick_category" not in st.session_state or st.session_state.quick_category not in categories:
+    st.session_state.quick_category = selected_item["category"] if selected_item else categories[0]
+
+st.markdown('<div class="section-title">快速操作</div>', unsafe_allow_html=True)
+with st.container(border=True):
+    st.caption("手機版可直接使用這一區，不需要先打開左側欄。")
+
+    if items:
+        quick_ids = [item["id"] for item in items]
+        default_quick_id = selected_item["id"] if selected_item else quick_ids[0]
+        quick_index = quick_ids.index(default_quick_id)
+        quick_selected_id = st.selectbox(
+            "快速切換題目",
+            quick_ids,
+            index=quick_index,
+            format_func=lambda item_id: next(
+                (
+                    f"{item['category']}｜{item['question'] or '未命名題目'}"
+                    for item in items
+                    if item["id"] == item_id
+                ),
+                "未命名題目",
+            ),
+        )
+
+        if quick_selected_id != st.session_state.selected_item_id:
+            st.session_state.selected_item_id = quick_selected_id
+            st.rerun()
+
+        previous_item_id = get_adjacent_item_id(items, st.session_state.selected_item_id, -1)
+        next_item_id = get_adjacent_item_id(items, st.session_state.selected_item_id, 1)
+
+        action_col1, action_col2 = st.columns(2)
+        with action_col1:
+            if st.button("(<-) 上一題", use_container_width=True, disabled=previous_item_id is None):
+                st.session_state.selected_item_id = previous_item_id
+                st.rerun()
+        with action_col2:
+            if st.button("(->) 下一題", use_container_width=True, disabled=next_item_id is None):
+                st.session_state.selected_item_id = next_item_id
+                st.rerun()
+    else:
+        st.info("目前還沒有題目。")
 
 with st.sidebar:
     st.write(f"登入中：`{current_user}`")
@@ -526,7 +626,7 @@ st.markdown('<div class="section-title">題目小卡</div>', unsafe_allow_html=T
 if not selected_item:
     st.info("請先在左側選擇題目，或在下方新增一筆資料。")
 else:
-    toggle_col1, toggle_col2 = st.columns(2)
+    toggle_col1, toggle_col2 = st.columns([1, 1], gap="small")
     with toggle_col1:
         st.checkbox("顯示 Point", key="show_points")
     with toggle_col2:
