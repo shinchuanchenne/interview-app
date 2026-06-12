@@ -1,70 +1,174 @@
+import hashlib
 import json
 import random
+import secrets
 from pathlib import Path
 from uuid import uuid4
 
 import streamlit as st
 
 
-DATA_FILE = Path("data.json")
-CATEGORY_FILE = Path("categories.json")
+USERS_FILE = Path("users.json")
+USER_DATA_DIR = Path("user_data")
 DEFAULT_CATEGORIES = ["經歷", "前職", "人柄", "專案", "志望動機"]
 DEFAULT_CATEGORY = DEFAULT_CATEGORIES[0]
 
 
-def ensure_data_file() -> None:
-    if not DATA_FILE.exists():
-        DATA_FILE.write_text("[]", encoding="utf-8")
+def ensure_users_file() -> None:
+    if not USERS_FILE.exists():
+        USERS_FILE.write_text("{}", encoding="utf-8")
 
 
-def ensure_category_file() -> None:
-    if not CATEGORY_FILE.exists():
-        CATEGORY_FILE.write_text(
-            json.dumps(DEFAULT_CATEGORIES, ensure_ascii=False, indent=2),
+def ensure_user_data_dir() -> None:
+    USER_DATA_DIR.mkdir(exist_ok=True)
+
+
+def normalize_username(username: str) -> str:
+    return username.strip()
+
+
+def user_file_path(username: str) -> Path:
+    safe_name = hashlib.sha256(username.encode("utf-8")).hexdigest()
+    return USER_DATA_DIR / f"{safe_name}.json"
+
+
+def password_hash(password: str, salt_hex: str) -> str:
+    return hashlib.pbkdf2_hmac(
+        "sha256",
+        password.encode("utf-8"),
+        bytes.fromhex(salt_hex),
+        100_000,
+    ).hex()
+
+
+def load_users() -> dict:
+    ensure_users_file()
+    try:
+        data = json.loads(USERS_FILE.read_text(encoding="utf-8"))
+        if isinstance(data, dict):
+            return data
+    except json.JSONDecodeError:
+        pass
+
+    USERS_FILE.write_text("{}", encoding="utf-8")
+    return {}
+
+
+def save_users(users: dict) -> None:
+    USERS_FILE.write_text(
+        json.dumps(users, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+
+def create_user(username: str, password: str) -> tuple[bool, str]:
+    username = normalize_username(username)
+    if not username:
+        return False, "請輸入帳號。"
+    if not password:
+        return False, "請輸入密碼。"
+
+    users = load_users()
+    if username in users:
+        return False, "這個帳號已經存在。"
+
+    salt = secrets.token_hex(16)
+    users[username] = {
+        "salt": salt,
+        "password_hash": password_hash(password, salt),
+    }
+    save_users(users)
+    ensure_user_data_file(username)
+    return True, "帳號建立成功，請使用新帳號登入。"
+
+
+def authenticate_user(username: str, password: str) -> tuple[bool, str]:
+    username = normalize_username(username)
+    users = load_users()
+    user = users.get(username)
+
+    if not user:
+        return False, "找不到這個帳號。"
+
+    expected_hash = user.get("password_hash", "")
+    salt = user.get("salt", "")
+    if not salt or password_hash(password, salt) != expected_hash:
+        return False, "密碼不正確。"
+
+    return True, ""
+
+
+def ensure_user_data_file(username: str) -> None:
+    ensure_user_data_dir()
+    file_path = user_file_path(username)
+    if not file_path.exists():
+        default_payload = {
+            "username": username,
+            "categories": DEFAULT_CATEGORIES.copy(),
+            "items": [],
+        }
+        file_path.write_text(
+            json.dumps(default_payload, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
 
 
-def load_categories() -> list[str]:
-    ensure_category_file()
+def load_user_payload(username: str) -> dict:
+    ensure_user_data_file(username)
+    file_path = user_file_path(username)
     try:
-        data = json.loads(CATEGORY_FILE.read_text(encoding="utf-8"))
-        if isinstance(data, list):
-            cleaned = []
-            for item in data:
-                if isinstance(item, str):
-                    value = item.strip()
-                    if value and value not in cleaned:
-                        cleaned.append(value)
-            if cleaned:
-                save_categories(cleaned)
-                return cleaned
+        data = json.loads(file_path.read_text(encoding="utf-8"))
+        if isinstance(data, dict):
+            categories = clean_categories(data.get("categories", []))
+            items = normalize_items(data.get("items", []), categories)
+            payload = {
+                "username": username,
+                "categories": categories,
+                "items": items,
+            }
+            save_user_payload(username, payload["categories"], payload["items"])
+            return payload
     except json.JSONDecodeError:
         pass
 
-    save_categories(DEFAULT_CATEGORIES)
-    return DEFAULT_CATEGORIES.copy()
+    payload = {
+        "username": username,
+        "categories": DEFAULT_CATEGORIES.copy(),
+        "items": [],
+    }
+    save_user_payload(username, payload["categories"], payload["items"])
+    return payload
 
 
-def save_categories(categories: list[str]) -> None:
-    cleaned = []
-    for category in categories:
-        value = category.strip()
-        if value and value not in cleaned:
-            cleaned.append(value)
-    if not cleaned:
-        cleaned = DEFAULT_CATEGORIES.copy()
-
-    CATEGORY_FILE.write_text(
-        json.dumps(cleaned, ensure_ascii=False, indent=2),
+def save_user_payload(username: str, categories: list[str], items: list[dict]) -> None:
+    ensure_user_data_dir()
+    payload = {
+        "username": username,
+        "categories": clean_categories(categories),
+        "items": sort_items(items, clean_categories(categories)),
+    }
+    user_file_path(username).write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
+
+
+def clean_categories(categories: list[str]) -> list[str]:
+    cleaned = []
+    for category in categories:
+        if isinstance(category, str):
+            value = category.strip()
+            if value and value not in cleaned:
+                cleaned.append(value)
+    if not cleaned:
+        return DEFAULT_CATEGORIES.copy()
+    return cleaned
 
 
 def normalize_item(item: dict, default_order: int, categories: list[str]) -> dict:
     category = item.get("category", DEFAULT_CATEGORY)
     if category not in categories:
-        category = DEFAULT_CATEGORY
+        category = categories[0] if categories else DEFAULT_CATEGORY
 
     return {
         "id": item.get("id", str(uuid4())),
@@ -76,32 +180,15 @@ def normalize_item(item: dict, default_order: int, categories: list[str]) -> dic
     }
 
 
-def load_items(categories: list[str]) -> list[dict]:
-    ensure_data_file()
-    try:
-        data = json.loads(DATA_FILE.read_text(encoding="utf-8"))
-        if isinstance(data, list):
-            normalized_items = [
-                normalize_item(item, default_order=index, categories=categories)
-                for index, item in enumerate(data)
-                if isinstance(item, dict)
-            ]
-            normalized_items = sort_items(normalized_items, categories)
-            if normalized_items != data:
-                save_items(normalized_items, categories)
-            return normalized_items
-    except json.JSONDecodeError:
-        pass
-
-    save_items([], categories)
-    return []
-
-
-def save_items(items: list[dict], categories: list[str]) -> None:
-    DATA_FILE.write_text(
-        json.dumps(sort_items(items, categories), ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
+def normalize_items(items: list, categories: list[str]) -> list[dict]:
+    if not isinstance(items, list):
+        return []
+    normalized = [
+        normalize_item(item, default_order=index, categories=categories)
+        for index, item in enumerate(items)
+        if isinstance(item, dict)
+    ]
+    return sort_items(normalized, categories)
 
 
 def sort_items(items: list[dict], categories: list[str]) -> list[dict]:
@@ -160,11 +247,9 @@ def set_selected_item(item_id: str) -> None:
 def pick_random_item(pool: list[dict], current_item_id: str | None) -> dict | None:
     if not pool:
         return None
-
     candidates = [item for item in pool if item["id"] != current_item_id]
     if not candidates:
         return None
-
     return random.choice(candidates)
 
 
@@ -174,15 +259,57 @@ def add_category(categories: list[str], new_name: str) -> tuple[list[str], str |
         return categories, "請先輸入分類名稱。"
     if cleaned in categories:
         return categories, "這個分類已經存在。"
+    return categories + [cleaned], None
 
-    updated = categories + [cleaned]
-    save_categories(updated)
-    return updated, None
+
+def reset_app_state_for_login() -> None:
+    st.session_state.selected_item_id = None
+    st.session_state.show_points = True
+    st.session_state.show_answer = True
+    st.session_state.category_edit_target = None
+    st.session_state.category_message = None
+
+
+def render_auth_screen() -> None:
+    st.title("面試回答管理 App")
+    st.caption("請先登入，資料會依使用者分開儲存。")
+
+    login_tab, register_tab = st.tabs(["登入", "建立帳號"])
+
+    with login_tab:
+        with st.form("login_form"):
+            username = st.text_input("帳號")
+            password = st.text_input("密碼", type="password")
+            submitted = st.form_submit_button("登入", use_container_width=True)
+
+        if submitted:
+            success, message = authenticate_user(username, password)
+            if success:
+                st.session_state.current_user = normalize_username(username)
+                reset_app_state_for_login()
+                st.rerun()
+            else:
+                st.error(message)
+
+    with register_tab:
+        with st.form("register_form"):
+            new_username = st.text_input("新帳號")
+            new_password = st.text_input("新密碼", type="password")
+            confirm_password = st.text_input("確認密碼", type="password")
+            created = st.form_submit_button("建立帳號", use_container_width=True)
+
+        if created:
+            if new_password != confirm_password:
+                st.error("兩次輸入的密碼不一致。")
+            else:
+                success, message = create_user(new_username, new_password)
+                if success:
+                    st.success(message)
+                else:
+                    st.error(message)
 
 
 st.set_page_config(page_title="面試回答管理 App", page_icon="🗂️", layout="wide")
-st.title("面試回答管理 App")
-st.caption("左側像目錄一樣管理題目，右側查看與編輯內容。")
 st.markdown(
     """
     <style>
@@ -235,8 +362,17 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-categories = load_categories()
-items = load_items(categories)
+if "current_user" not in st.session_state:
+    st.session_state.current_user = None
+
+if not st.session_state.current_user:
+    render_auth_screen()
+    st.stop()
+
+current_user = st.session_state.current_user
+payload = load_user_payload(current_user)
+categories = payload["categories"]
+items = payload["items"]
 
 if "selected_item_id" not in st.session_state:
     st.session_state.selected_item_id = items[0]["id"] if items else None
@@ -249,13 +385,24 @@ if "category_edit_target" not in st.session_state:
 if "category_message" not in st.session_state:
     st.session_state.category_message = None
 
+if st.session_state.selected_item_id is None and items:
+    st.session_state.selected_item_id = items[0]["id"]
+
 if st.session_state.selected_item_id and not get_item_by_id(items, st.session_state.selected_item_id):
     st.session_state.selected_item_id = items[0]["id"] if items else None
 
 selected_item = get_item_by_id(items, st.session_state.selected_item_id)
 
+st.title("面試回答管理 App")
+st.caption(f"目前登入帳號：{current_user}")
 
 with st.sidebar:
+    st.write(f"登入中：`{current_user}`")
+    if st.button("登出", use_container_width=True):
+        st.session_state.current_user = None
+        reset_app_state_for_login()
+        st.rerun()
+
     interview_mode_clicked = st.button("面試模式", use_container_width=True)
     if interview_mode_clicked:
         if items:
@@ -305,7 +452,7 @@ with st.sidebar:
                     st.session_state.category_message = ("warning", f"分類「{category}」內還有卡片，不能刪除。")
                 else:
                     updated_categories = [item for item in categories if item != category]
-                    save_categories(updated_categories)
+                    save_user_payload(current_user, updated_categories, items)
                     if st.session_state.category_edit_target == category:
                         st.session_state.category_edit_target = None
                     st.session_state.category_message = ("success", f"分類「{category}」已刪除。")
@@ -327,8 +474,7 @@ with st.sidebar:
                         if item["category"] == category:
                             item["category"] = cleaned_name
                     items = compact_category_orders(items, updated_categories)
-                    save_categories(updated_categories)
-                    save_items(items, updated_categories)
+                    save_user_payload(current_user, updated_categories, items)
                     st.session_state.category_edit_target = None
                     st.session_state.category_message = ("success", f"分類已更新為「{cleaned_name}」。")
                 st.rerun()
@@ -363,13 +509,13 @@ with st.sidebar:
 
                 if move_up:
                     items = reorder_category_items(items, categories, category, item["id"], -1)
-                    save_items(items, categories)
+                    save_user_payload(current_user, categories, items)
                     st.session_state.selected_item_id = item["id"]
                     st.rerun()
 
                 if move_down:
                     items = reorder_category_items(items, categories, category, item["id"], 1)
-                    save_items(items, categories)
+                    save_user_payload(current_user, categories, items)
                     st.session_state.selected_item_id = item["id"]
                     st.rerun()
         else:
@@ -468,15 +614,14 @@ else:
                         item["answer"] = edit_answer.strip()
                         break
                 items = compact_category_orders(items, categories)
-                save_items(items, categories)
+                save_user_payload(current_user, categories, items)
                 st.success("資料已更新。")
                 st.rerun()
 
         if delete_submitted:
             remaining_items = [item for item in items if item["id"] != selected_item["id"]]
             remaining_items = compact_category_orders(remaining_items, categories)
-            save_items(remaining_items, categories)
-
+            save_user_payload(current_user, categories, remaining_items)
             st.session_state.selected_item_id = remaining_items[0]["id"] if remaining_items else None
             st.success("資料已刪除。")
             st.rerun()
@@ -517,7 +662,7 @@ with st.expander("新增一筆面試準備資料", expanded=False):
             }
             items.append(new_item)
             items = compact_category_orders(items, working_categories)
-            save_items(items, working_categories)
+            save_user_payload(current_user, working_categories, items)
             st.session_state.selected_item_id = new_item["id"]
             st.success("資料已新增。")
             st.rerun()

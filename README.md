@@ -1,12 +1,14 @@
 # Interview Answer Management App
 
-A lightweight CRUD application built with Python and Streamlit for organizing Japanese interview preparation content.
+A lightweight multi-user CRUD application built with Python and Streamlit for organizing Japanese interview preparation content.
 
 
 ## Overview
 
 This application supports:
 
+- User login with locally stored credentials
+- Per-user interview data storage
 - Creating interview preparation entries
 - Editing existing entries
 - Deleting entries
@@ -17,10 +19,11 @@ This application supports:
 
 ## Features
 
-- Local JSON-based storage
-- Automatic `data.json` creation when the file does not exist
-- Automatic `categories.json` creation when the file does not exist
-- Default categories created on first run
+- Login and account creation UI
+- Per-user local JSON storage
+- Password hashing with per-user salt
+- Automatic creation of a personal data file for each user
+- Default categories created for each new user
 - User-defined category creation
 - Category rename support
 - Empty-category deletion support
@@ -34,22 +37,28 @@ This application supports:
 
 ## Data Model
 
-Each entry contains the following fields:
+Each interview entry contains the following fields:
 
 - `question`: Japanese interview question
 - `points`: Answer points or talking notes
 - `answer`: Formal answer
 - `category`: Entry category
+- `order`: Position within the category
+- `id`: Unique card identifier
 
-Default categories created on first run:
+Each user has a dedicated JSON file containing:
+
+- `username`
+- `categories`
+- `items`
+
+Default categories for a newly created user:
 
 - `經歷`
 - `前職`
 - `人柄`
 - `專案`
 - `志望動機`
-
-Additional categories can be created from the application UI.
 
 
 ## Project Structure
@@ -59,9 +68,19 @@ interview-python-app/
 ├── app.py
 ├── requirements.txt
 ├── .gitignore
-├── categories.json
-└── data.json
+├── README.md
+├── PROJECT_CONTEXT.txt
+├── users.json
+└── user_data/
+    └── <hashed-username>.json
 ```
+
+Notes:
+
+- `users.json` stores account credentials metadata
+- `user_data/` stores one JSON file per user
+- both are created automatically when needed
+- both are excluded from Git by default
 
 
 ## Requirements
@@ -121,6 +140,27 @@ http://localhost:8501
 ```
 
 
+## Authentication
+
+The application starts with a login screen.
+
+Available actions:
+
+- `登入` for existing users
+- `建立帳號` for new users
+
+Credential handling:
+
+- User passwords are not stored as plain text
+- Passwords are hashed using PBKDF2-HMAC-SHA256
+- Each user record includes a unique salt
+
+Storage:
+
+- account metadata is stored in `users.json`
+- interview data is stored in `user_data/<hashed-username>.json`
+
+
 ## Usage
 
 ### Sidebar Navigation
@@ -133,7 +173,7 @@ http://localhost:8501
 
 ### Interview Mode
 
-- `Interview Mode` in the upper-left area selects a random question from all entries
+- `面試模式` in the upper-left area selects a random question from all entries of the current user
 - `抽題` beside each category selects a random question only from that category
 - Random selection does not immediately repeat the currently displayed question
 
@@ -147,8 +187,8 @@ The main panel displays three cards in vertical order:
 
 The following display controls are available:
 
-- `Show Point`
-- `Show Answer`
+- `顯示 Point`
+- `顯示答案`
 
 ### Creating an Entry
 
@@ -160,7 +200,7 @@ The following display controls are available:
 
 ### Category Management
 
-- Default categories are created automatically when `categories.json` is first generated
+- Each user manages categories independently
 - Category names can be edited from the sidebar using `編輯`
 - Categories can be removed using `刪除` only when no cards remain in that category
 
@@ -175,18 +215,69 @@ The following display controls are available:
 - Expand `編輯這張小卡`
 - Select `刪除資料`
 
+### Logging Out
+
+- Use `登出` in the sidebar to end the current session
+
 
 ## Local Data Storage
 
-Application data is stored locally in `data.json` and `categories.json`.
+The application uses two local storage layers:
+
+### 1. Account Registry
+
+File:
+
+- `users.json`
+
+Purpose:
+
+- stores usernames
+- stores password hash values
+- stores per-user salts
+
+### 2. Per-User Interview Data
+
+Directory:
+
+- `user_data/`
+
+Each user has one dedicated JSON file containing:
+
+- `username`
+- `categories`
+- `items`
 
 Behavior:
 
-- The application checks for `data.json` each time it loads data
-- The application checks for `categories.json` each time it loads categories
-- If the file does not exist, an empty `data.json` file is created automatically
-- If the category file does not exist, a `categories.json` file is created automatically with the default categories
-- No manual creation step is required before first launch
+- `users.json` is created automatically if missing
+- `user_data/` is created automatically if missing
+- a per-user JSON file is created automatically when a new account is created
+- a per-user JSON file is also recreated if missing when the user logs in
+
+
+## Testing Status
+
+Core logic has been validated with local logic tests covering:
+
+- user creation
+- per-user JSON creation
+- password hashing
+- login success and failure
+- default category initialization
+- category creation and duplicate rejection
+- category-local ordering
+- reordering behavior
+- save/load round trips
+- random selection rules
+
+Latest recorded result:
+
+```text
+17 tests, 0 failed
+```
+
+These checks validate the logic layer, not full browser-driven UI automation.
 
 
 ## Git Tracking and `.gitignore`
@@ -196,19 +287,21 @@ The repository excludes the following local files and directories:
 ```text
 data.json
 categories.json
+users.json
+user_data/
 .venv/
 __pycache__/
 .DS_Store
 ```
 
-As a result, local interview data and local category configuration are not included in Git commits by default.
+As a result, local credentials and local interview data are not included in Git commits by default.
 
-If `data.json` or `categories.json` was previously committed before `.gitignore` was added, stop tracking it with:
+If any of these files were previously committed before `.gitignore` was updated, stop tracking them with:
 
 ```bash
-git rm --cached data.json
-git rm --cached categories.json
-git commit -m "Stop tracking local data files"
+git rm --cached users.json
+git rm -r --cached user_data
+git commit -m "Stop tracking local user data"
 ```
 
 

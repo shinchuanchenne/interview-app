@@ -1,5 +1,7 @@
 data.json
 categories.json
+users.json
+user_data/
 .venv/
 __pycache__/
 .DS_Store

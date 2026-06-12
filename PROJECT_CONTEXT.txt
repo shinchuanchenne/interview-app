@@ -1,0 +1,735 @@
+Interview Preparation App
+Project Context and Handoff Notes for AI and Human Maintainers
+
+1. Document Purpose
+
+This file is an internal plain-text context document.
+
+It is intended for:
+- AI coding assistants
+- future maintainers
+- the project owner
+
+This file explains:
+- what the project does
+- which files are important
+- how login and storage work
+- how the UI behaves
+- how data is structured
+- what flows must not be broken when editing the app
+
+README.md is the public-facing project document.
+This file is the internal operational handoff document.
+
+
+2. Project Summary
+
+Project name:
+- Interview Answer Management App
+
+Tech stack:
+- Python
+- Streamlit
+- local JSON files
+
+Primary purpose:
+- manage Japanese interview preparation cards
+- store question, answer points, and formal answer
+- separate data by user account
+- support category-based organization
+- support random-question practice mode
+
+This is a local-first multi-user application.
+
+It currently does not use:
+- a cloud database
+- external authentication
+- OAuth
+- AI API integration
+
+
+3. Core Concept
+
+The application is a multi-user card management tool.
+
+There are two data layers:
+
+3.1 Account layer
+- username
+- password hash
+- password salt
+
+3.2 Interview content layer
+- categories
+- interview cards
+
+Each user has a private JSON file containing all of that user's interview content.
+
+
+4. Current Files and Their Roles
+
+4.1 app.py
+
+Main application file.
+
+Responsibilities:
+- render login and registration UI
+- hash and validate passwords
+- manage per-user JSON files
+- load and save categories
+- load and save interview cards
+- render sidebar navigation
+- render main card display
+- handle card CRUD
+- handle category CRUD
+- handle random interview mode
+
+This is the most important file in the project.
+
+
+4.2 requirements.txt
+
+Current dependency list.
+
+Current content:
+- streamlit
+
+
+4.3 README.md
+
+Public-facing documentation.
+
+Responsibilities:
+- installation
+- running
+- usage
+- storage explanation
+- Git / GitHub notes
+- Windows setup
+
+
+4.4 PROJECT_CONTEXT.txt
+
+Internal operational document.
+
+Responsibilities:
+- preserve implementation context
+- explain system structure to AI and maintainers
+- record assumptions and constraints
+
+
+4.5 users.json
+
+Account registry file.
+
+Purpose:
+- store account records
+
+Each account entry currently contains:
+- salt
+- password_hash
+
+Important:
+- passwords are not stored in plain text
+- this file is local-only
+- this file is excluded from Git
+
+
+4.6 user_data/
+
+Directory containing one JSON file per user.
+
+Each file is named using:
+- SHA-256 hash of the username
+
+Each user file contains:
+- username
+- categories
+- items
+
+Important:
+- this directory is local-only
+- this directory is excluded from Git
+
+
+4.7 .gitignore
+
+Excludes local data and environment files.
+
+Current important entries:
+- users.json
+- user_data/
+- .venv/
+- __pycache__/
+- .DS_Store
+
+
+4.8 .venv
+
+Local Python virtual environment.
+Not part of project logic.
+
+
+4.9 __pycache__
+
+Python cache directory.
+Not part of project logic.
+
+
+5. Multi-User Storage Model
+
+The current implementation uses:
+
+5.1 users.json
+- global account registry
+
+5.2 user_data/<hashed-username>.json
+- per-user interview data
+
+This was chosen because:
+- it satisfies the requirement for login
+- it separates user data cleanly
+- it keeps deployment simple
+- it avoids adding a database too early
+
+Tradeoffs:
+- not appropriate for many concurrent writers
+- not suitable for production-scale authentication
+- local file corruption is still possible
+- no password reset flow exists
+
+
+6. Automatic File and Directory Creation
+
+The app must recover gracefully if local files do not exist.
+
+Current behavior:
+- ensure_users_file() creates users.json if missing
+- ensure_user_data_dir() creates user_data/ if missing
+- ensure_user_data_file(username) creates that user's JSON file if missing
+
+This means:
+- first launch does not require manual setup
+- creating a new user automatically prepares storage
+- deleting a user's data file does not permanently break the app
+
+
+7. Account Model
+
+Usernames:
+- stored as provided after strip()
+- used as account keys in users.json
+
+Passwords:
+- hashed with PBKDF2-HMAC-SHA256
+- salted per user
+- not recoverable from local files
+
+Current account operations:
+- create account
+- login
+- logout
+
+Current account limitations:
+- no password change
+- no password reset
+- no username rename
+- no account deletion UI
+
+
+8. Per-User Data Model
+
+Each user JSON file stores:
+
+8.1 username
+- original username string
+
+8.2 categories
+- list of category names
+
+8.3 items
+- list of interview cards
+
+Each interview card contains:
+- id
+- category
+- order
+- question
+- points
+- answer
+
+
+9. Default Categories
+
+Default categories are:
+- 經歷
+- 前職
+- 人柄
+- 專案
+- 志望動機
+
+Behavior:
+- a newly created user starts with these categories
+- categories are then user-managed
+- each user has an independent category list
+
+
+10. Runtime Flow
+
+At a high level, app.py runs in this order:
+
+1. Define constants and helper functions
+2. Configure Streamlit page
+3. Check whether a user is logged in
+4. If not logged in:
+   - show login and registration UI
+   - stop execution after rendering auth screen
+5. If logged in:
+   - load that user's JSON payload
+   - initialize session state
+   - render sidebar
+   - render main card display
+   - render edit form
+   - render create form
+
+
+11. Important Helper Functions in app.py
+
+11.1 ensure_users_file()
+- creates users.json if missing
+
+11.2 ensure_user_data_dir()
+- creates user_data/ directory if missing
+
+11.3 normalize_username(username)
+- trims whitespace
+
+11.4 user_file_path(username)
+- hashes the username
+- returns the user-specific JSON path
+
+11.5 password_hash(password, salt_hex)
+- derives a password hash
+
+11.6 load_users()
+- loads users.json
+- returns an empty dict fallback if invalid
+
+11.7 save_users(users)
+- writes users.json
+
+11.8 create_user(username, password)
+- validates account creation
+- hashes password
+- writes account record
+- creates that user's data file
+
+11.9 authenticate_user(username, password)
+- validates entered credentials
+
+11.10 ensure_user_data_file(username)
+- ensures the user-specific JSON file exists
+
+11.11 load_user_payload(username)
+- loads that user's categories and items
+- normalizes structure
+
+11.12 save_user_payload(username, categories, items)
+- writes the complete per-user JSON file
+
+11.13 clean_categories(categories)
+- removes blanks and duplicates
+- restores defaults if the list becomes empty
+
+11.14 normalize_item(item, default_order, categories)
+- repairs missing fields
+- fixes invalid category
+
+11.15 normalize_items(items, categories)
+- normalizes all cards for a user
+
+11.16 sort_items(items, categories)
+- sorts cards by category order and card order
+
+11.17 compact_category_orders(items, categories)
+- makes order values contiguous inside each category
+
+11.18 reorder_category_items(items, categories, category, item_id, direction)
+- moves a card up or down inside its category
+
+11.19 get_item_by_id(items, item_id)
+- returns selected card
+
+11.20 set_selected_item(item_id)
+- updates selected card in session state
+
+11.21 pick_random_item(pool, current_item_id)
+- selects a random card
+- excludes the currently displayed card
+
+11.22 add_category(categories, new_name)
+- validates and adds a new category
+
+11.23 reset_app_state_for_login()
+- resets UI-related session state when login state changes
+
+11.24 render_auth_screen()
+- renders the login / account creation screen
+
+
+12. Streamlit Session State Usage
+
+Persistent user data is not stored in session_state.
+Persistent user data is stored in user_data/<hashed-username>.json.
+
+Session state is only used for runtime UI/session behavior.
+
+Important keys:
+
+- current_user
+  Logged-in username.
+
+- selected_item_id
+  Currently selected interview card.
+
+- show_points
+  Controls whether the points card is visible.
+
+- show_answer
+  Controls whether the answer card is visible.
+
+- category_edit_target
+  Tracks which category rename form is open.
+
+- category_message
+  Stores one temporary category success/warning message.
+
+
+13. Login Screen Behavior
+
+Before login, the application shows:
+- a login tab
+- a registration tab
+
+Login flow:
+- user enters username and password
+- credentials are checked against users.json
+- on success, current_user is stored in session state
+
+Registration flow:
+- user enters username
+- user enters password twice
+- password mismatch is rejected
+- duplicate username is rejected
+- on success, users.json is updated and a personal data file is created
+
+
+14. Sidebar Behavior
+
+The sidebar is the primary navigation area after login.
+
+Current sidebar features:
+- logged-in username display
+- logout button
+- global interview mode button
+- category rows
+- per-category random-question button
+- per-category edit button
+- per-category delete button
+- card list under each category
+- up/down ordering controls
+
+Behavior details:
+- clicking a card selects it
+- selected card uses Streamlit button type="primary"
+- category delete is blocked if cards exist in that category
+- logout clears current_user and resets UI state
+
+
+15. Main Content Area
+
+The main content area shows:
+- section title
+- question card
+- points card if enabled
+- answer card if enabled
+- expandable edit form
+- expandable create form
+
+The layout uses stacked card-style sections.
+
+The styles are defined inline with CSS in app.py.
+
+
+16. Interview Mode
+
+Two interview modes exist:
+
+16.1 Global Interview Mode
+- chooses a random card from the current user's entire item list
+- does not immediately repeat the current card
+
+16.2 Category Interview Mode
+- chooses a random card from the selected category only
+- also avoids immediately repeating the current card
+
+Important edge behavior:
+- if no alternative exists, no new selection is made
+- warnings or disabled states communicate this in the UI
+
+
+17. Card CRUD Flow
+
+17.1 Create
+
+Location:
+- expandable section: 新增一筆面試準備資料
+
+Behavior:
+- user chooses an existing category or enters a new category name
+- if a new category name is provided, it overrides the selected existing category
+- card is appended to the end of that category
+- order is recalculated
+- the user's JSON file is saved
+
+17.2 Read
+
+Location:
+- sidebar selection + main panel
+
+Behavior:
+- selected card is shown in the main display area
+
+17.3 Update
+
+Location:
+- expandable section: 編輯這張小卡
+
+Behavior:
+- question, points, answer, and category can be changed
+- moving to a different category appends the item to the end of that category
+- order is compacted after update
+- the user's JSON file is saved
+
+17.4 Delete
+
+Location:
+- expandable section: 編輯這張小卡
+
+Behavior:
+- removes the selected card
+- order is compacted
+- first remaining card becomes selected if one exists
+
+
+18. Category Management Flow
+
+18.1 Add Category
+
+There is no separate category-management page.
+Categories are currently added during card creation.
+
+Logic:
+- user enters a new category name
+- add_category() validates it
+- if valid, the category is added to the current user's category list
+- then the new card is created in that category
+
+18.2 Rename Category
+
+Location:
+- sidebar category row -> 編輯
+
+Logic:
+- opens an inline rename form
+- updates the category list
+- rewrites every card that used the old category name
+- saves the updated per-user JSON
+
+18.3 Delete Category
+
+Location:
+- sidebar category row -> 刪除
+
+Logic:
+- allowed only when the category contains no cards
+- otherwise a warning message is shown
+
+
+19. Ordering Logic
+
+Ordering is category-local and user-local.
+
+Meaning:
+- each user has independent ordering
+- each category has its own sequence starting at 0
+- moving a card up/down affects only that category for that user
+
+Order is recalculated after:
+- create
+- update with category change
+- delete
+- reorder
+- category rename
+
+
+20. UI Language State
+
+The current UI is mixed-language.
+
+Examples:
+- implementation code is mostly English
+- many on-screen labels are Chinese
+- interview content is often Japanese
+
+This matters when modifying:
+- docs
+- labels
+- tests
+- screenshots
+
+
+21. Testing Status
+
+Core logic has been manually validated with non-destructive logic tests.
+
+Covered logic includes:
+- user creation
+- user-file creation
+- password hashing
+- authentication success and failure
+- category initialization
+- category addition
+- duplicate category rejection
+- per-category ordering
+- reorder behavior
+- save/load round trip
+- random selection non-repetition rule
+
+Latest recorded result:
+- 17 tests, 0 failed
+
+These are logic-layer checks, not browser automation tests.
+
+
+22. Deployment Considerations
+
+Current persistence is local filesystem based.
+
+If deployed to EC2 or another single machine:
+- users.json lives on that machine
+- user_data/ lives on that machine
+- replacing or deleting the machine risks data loss
+
+Future production upgrade paths could include:
+- SQLite
+- PostgreSQL / RDS
+- DynamoDB
+- S3-backed export / backup
+
+
+23. Git and Local Data Rules
+
+The following are local-only and should not be committed:
+- users.json
+- user_data/
+
+Current .gitignore excludes them.
+
+If they were previously committed, stop tracking them with:
+- git rm --cached users.json
+- git rm -r --cached user_data
+
+
+24. What an AI Assistant Must Understand Before Editing
+
+Any AI assistant modifying this project should understand:
+
+1. This is now a multi-user app.
+   Data is not global anymore.
+
+2. Persistent interview data is per user.
+   Changes must be saved with save_user_payload(...), not to a global data.json file.
+
+3. Login state gates the main UI.
+   Do not render the main app for unauthenticated sessions.
+
+4. Categories are per user.
+   They are stored inside each user's JSON payload.
+
+5. Password handling must remain hashed.
+   Do not introduce plain-text password storage.
+
+6. File auto-creation is required.
+   Missing users.json or user data files must not break the app.
+
+7. Random mode must continue to avoid immediate repetition unless intentionally redesigned.
+
+8. The sidebar is the primary interaction model.
+   Redesigns should preserve that mental model unless explicitly intended.
+
+
+25. Known Current Limitations
+
+The implementation is intentionally simple.
+
+Known limitations:
+- no database
+- no password reset
+- no account deletion UI
+- no role system
+- no multi-device sync
+- no concurrency protection for simultaneous writes
+- no autosave while typing
+- no dedicated category admin page
+- no drag-and-drop ordering
+
+
+26. Recommended Future Improvements
+
+Possible next upgrades:
+- add password change flow
+- add account deletion flow
+- add search / filtering
+- add export / import
+- add dedicated category management panel
+- add database-backed storage
+- add automated tests in a tests/ directory
+- add deployment configuration files
+- translate UI consistently into one language
+
+
+27. How This Context File Was Written
+
+This file was written as an AI-friendly operational map.
+
+The structure used here is:
+- files first
+- storage model second
+- runtime flow third
+- UI behavior fourth
+- maintenance constraints last
+
+The goal is to make safe future edits easier by preserving both implementation facts and the reasoning behind the current structure.
+
+
+28. Short Maintenance Checklist
+
+Before editing:
+- read app.py
+- read README.md
+- read this file
+- confirm login flow assumptions
+- confirm per-user storage assumptions
+- confirm category behavior
+- confirm ordering behavior
+
+After editing:
+- run Python syntax validation
+- verify account creation
+- verify login success/failure
+- verify per-user file creation
+- verify create / update / delete for cards
+- verify category create / rename / delete
+- verify random mode
+- verify logout flow
