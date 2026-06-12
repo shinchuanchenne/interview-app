@@ -81,6 +81,7 @@ Notes:
 - `user_data/` stores one JSON file per user
 - both are created automatically when needed
 - both are excluded from Git by default
+- legacy `data.json` and `categories.json` are deprecated and no longer used by the current application
 
 
 ## Requirements
@@ -255,6 +256,12 @@ Behavior:
 - a per-user JSON file is created automatically when a new account is created
 - a per-user JSON file is also recreated if missing when the user logs in
 
+Legacy note:
+
+- the previous single-user files `data.json` and `categories.json` have been retired
+- current application state is stored only in `users.json` and `user_data/`
+- older projects should not reintroduce `data.json` or `categories.json` into the runtime path
+
 
 ## Testing Status
 
@@ -285,8 +292,6 @@ These checks validate the logic layer, not full browser-driven UI automation.
 The repository excludes the following local files and directories:
 
 ```text
-data.json
-categories.json
 users.json
 user_data/
 .venv/
@@ -303,6 +308,8 @@ git rm --cached users.json
 git rm -r --cached user_data
 git commit -m "Stop tracking local user data"
 ```
+
+If legacy `data.json` or `categories.json` still exist in older branches or historical working copies, they should remain untracked and should not be restored as active runtime files.
 
 
 ## Publishing to GitHub
